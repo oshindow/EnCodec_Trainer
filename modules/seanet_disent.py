@@ -143,15 +143,16 @@ class SEANetEncoder(nn.Module):
         ]
 
         self.model = nn.Sequential(*model)
-        self.preconv_pro = nn.Conv1d(1024, 512, kernel=3, padding=1)
-        self.preconv_tim = nn.Conv1d(512, 512, kernel=3, padding=1)
+        # Encoder prenet
+        self.preconv_prosody = nn.Conv1d(1024, 512, kernel_size=3, padding=1)
+        self.preconv_timbre = nn.Conv1d(512, 512, kernel_size=3, padding=1)
 
-    def forward(self, pro, tim, length):
-        pro_emb = self.preconv_pro()
-        tim_emb = self.preconv_tim = 
-        torch.cat()
-        return self.model(x)
-
+    def forward(self, pro, tim):
+        pro_emb = self.preconv_prosody(pro.permute(0, 2, 1))
+        tim_emb = self.preconv_timbre(tim.permute(0, 2, 1))
+        emb = pro_emb + tim_emb
+        # bs, dim, seq_len
+        return emb
 
 class SEANetDecoder(nn.Module):
     """SEANet decoder.

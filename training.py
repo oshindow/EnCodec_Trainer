@@ -82,7 +82,7 @@ def collate_fn(batch):
 
         pro[i,:pro_.shape[-2],:] = pro_
         tar[i,:tar_.shape[-2],:] = tar_
-        tim[i,:tar_.shape[-2],:] = torch.rand(1, 512).unsqueeze(1).expand(-1,tar_.shape[-2],-1) # tim
+        tim[i,:tar_.shape[-2],:] = tim_
     
     # tim = tim.expand(-1, )
     lengths = torch.LongTensor(lengths)
@@ -115,7 +115,7 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
     model = EncodecModel._get_model(
                 target_bandwidths, sample_rate, channels,
                 causal=False, model_norm='time_group_norm', audio_normalize=True,
-                segment=1., name='disentangle_encodec_24khz')
+                segment=1., name='disentangle_encodec_24khz').encoder
     model.train()
     model.train_quantization = False
     model.cuda()
@@ -154,7 +154,7 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
             # disc.zero_grad()
             print(tim.shape, pro.shape, lengths)
             # torch.Size([5, 643, 512]) torch.Size([5, 643, 1024]) tensor([102, 169, 643, 164, 319], device='cuda:0')
-            output, loss_enc, _ = model(pro, tim, lengths)
+            output, loss_enc, _ = model(pro, tim)
 
             # logits_real, fmap_real = disc(input_wav)
             # if train_d:

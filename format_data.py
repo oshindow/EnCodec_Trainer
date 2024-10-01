@@ -8,7 +8,17 @@ for file in os.listdir(prosody_root):
         uid = file[:-4]
         # print(uid)
         filepath = os.path.join(prosody_root, file)
-        data[uid] = [filepath, filepath]
+        data[uid] = [filepath]
+
+
+prosody_root = '/data2/junchuan/VALLE-X/timbre_vec/'
+for file in os.listdir(prosody_root):
+    if '.npy' in file:
+        # 4297_13009_000046_000001.npy 
+        uid = file[:-4]
+        # print(uid)
+        filepath = os.path.join(prosody_root, file)
+        data[uid].append(filepath)
 
 target_root = '/data2/xintong/LibriTTS_encodec_continuous/train-clean-100'
 # 911_128684_000020_000004.npy
