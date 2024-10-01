@@ -54,24 +54,55 @@ def pad_sequence(batch):
 
 
 def collate_fn(batch):
-    tensors = []
+    B = len(batch)
+    
+    # rpsody: [1, 329, 1024]
+    # timbre: [1, 512]
+    # target: [1, 329, 128]
 
-    for waveform, _ in batch:
-        tensors += [waveform]
+    max_length = max([item[1].shape[-2] for item in batch])
+    # tar_max_length = max([item[3].shape[-2] for item in batch])
 
-    # Group the list of tensors into a batched tensor
-    tensors = pad_sequence(tensors)
-    return tensors
+    pro_nfeats = batch[0][1].shape[-1]
+    tim_nfeats = 512 # batch[0][2].shape[-1]
+    tar_nfeats = batch[0][3].shape[-1]
+
+    # print(type(B), type(pro_max_length), type(pro_nfeats))
+    pro = torch.zeros((B, max_length, pro_nfeats), dtype=torch.float32)
+    tar = torch.zeros((B, max_length, tar_nfeats), dtype=torch.float32)
+    tim = torch.zeros((B, max_length, tim_nfeats), dtype=torch.float32)
+
+    lengths = []
+
+    for i, item in enumerate(batch):
+        pro_, tim_, tar_ = item[1], item[2], item[3]
+        
+        lengths.append(pro_.shape[-2])
+        # tar_lengths.append(tar_.shape[-2])
+
+        pro[i,:pro_.shape[-2],:] = pro_
+        tar[i,:tar_.shape[-2],:] = tar_
+        tim[i,:tar_.shape[-2],:] = torch.rand(1, 512).unsqueeze(1).expand(-1,tar_.shape[-2],-1) # tim
+    
+    # tim = tim.expand(-1, )
+    lengths = torch.LongTensor(lengths)
+    # tar_lengths = torch.LongTensor(tar_lengths)
+
+    print(pro.shape, tim.shape, tar.shape, lengths)
+    return pro, tim, tar, lengths
 
 
 def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=100000, batch_size=8):
-    csv_path = 'datasets/e-gmd-v1.0.0/fileTRAIN.csv'
-    data_path = 'datasets/e-gmd-v1.0.0'
-
+    # csv_path = 'datasets/e-gmd-v1.0.0/fileTRAIN.csv'
+    # data_path = 'datasets/e-gmd-v1.0.0'
+    # params.data_path 
+    data_path = 'train.txt' # <uid>|<prosody_path>|<timbre_path>|<target_path>
+    # timbre_path = 'datasets/timbre_features.txt' # <uid>|<path>
+    # target_path = 'datasets/target_features.txt' # <uid>|<path>
     if fixed_length > 0:
-        trainset = data.CustomAudioDataset(csv_path, data_path, tensor_cut=tensor_cut, fixed_length=fixed_length)
+        trainset = data.CustomAudioDataset(data_path, tensor_cut=tensor_cut, fixed_length=fixed_length)
     else:
-        trainset = data.CustomAudioDataset(csv_path, data_path, tensor_cut=tensor_cut)
+        trainset = data.CustomAudioDataset(data_path, tensor_cut=tensor_cut)
     
 
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn,)
@@ -84,48 +115,60 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
     model = EncodecModel._get_model(
                 target_bandwidths, sample_rate, channels,
                 causal=False, model_norm='time_group_norm', audio_normalize=True,
-                segment=1., name='my_encodec_24khz')
+                segment=1., name='disentangle_encodec_24khz')
     model.train()
-    model.train_quantization = True
+    model.train_quantization = False
     model.cuda()
     
-    disc = MultiScaleSTFTDiscriminator(filters=32)
-    disc.train()
-    disc.cuda()
+    # disc = MultiScaleSTFTDiscriminator(filters=32)
+    # disc.train()
+    # disc.cuda()
 
 
     lr = 0.01
     # optimizer = optim.SGD([{'params': model.parameters(), 'lr': lr}], momentum=0.9)
     # optimizer_disc = optim.SGD([{'params': disc.parameters(), 'lr': lr*10}], momentum=0.9)
     optimizer = optim.AdamW([{'params': model.parameters(), 'lr': lr}], betas=(0.8, 0.99))
-    optimizer_disc = optim.AdamW([{'params': disc.parameters(), 'lr': lr}], betas=(0.8, 0.99))
+    # optimizer_disc = optim.AdamW([{'params': disc.parameters(), 'lr': lr}], betas=(0.8, 0.99))
 
     def train(epoch):
         last_loss = 0
-        train_d = False
+        # train_d = False
         print('----------------------------------------Epoch: {}----------------------------------------'.format(epoch))
-        for batch_idx, input_wav in enumerate(trainloader):
-            train_d = not train_d
-            input_wav = input_wav.cuda()
+        for batch_idx, batch in enumerate(trainloader):
+
+            pro, tim, tar, lengths = batch
+            # torch.Size([5, 754, 1024]) torch.Size([5]) torch.Size([5, 512]) torch.Size([5, 754, 128]) torch.Size([5]
+            # torch.Size([5, 1376, 1024]) tensor([ 259,   98, 1376,  598, 1250]) torch.Size([5, 512]) torch.Size([5, 1376, 128]) tensor([ 259,   98, 1376,  598, 1250])
+            pro = pro.cuda()
+            lengths = lengths.cuda()
+            tim = tim.cuda()
+            # tim_lengths = tim_lengths.cuda()
+            tar = tar.cuda()
+            # tar_lengths = tar_lengths.cuda()
+
+
             optimizer.zero_grad()
             model.zero_grad()
-            optimizer_disc.zero_grad()
-            disc.zero_grad()
-            output, loss_enc, _ = model(input_wav)
+            # optimizer_disc.zero_grad()
+            # disc.zero_grad()
+            print(tim.shape, pro.shape, lengths)
+            # torch.Size([5, 643, 512]) torch.Size([5, 643, 1024]) tensor([102, 169, 643, 164, 319], device='cuda:0')
+            output, loss_enc, _ = model(pro, tim, lengths)
 
-            logits_real, fmap_real = disc(input_wav)
-            if train_d:
-                logits_fake, _ = disc(model(input_wav)[0].detach())
-                loss = disc_loss(logits_real, logits_fake)
-                if loss > last_loss/2:
-                    loss.backward()
-                    optimizer_disc.step()
-                last_loss = 0
+            # logits_real, fmap_real = disc(input_wav)
+            # if train_d:
+            #     logits_fake, _ = disc(model(input_wav)[0].detach())
+            #     loss = disc_loss(logits_real, logits_fake)
+            #     if loss > last_loss/2:
+            #         loss.backward()
+            #         optimizer_disc.step()
+            #     last_loss = 0
 
-            logits_fake, fmap_fake = disc(output)
-            loss = total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output)
+            # logits_fake, fmap_fake = disc(output)
+            loss = total_loss(output, tim, tim_lengths)
             last_loss += loss.item()
-            loss_enc.backward(retain_graph=True)
+            # loss_enc.backward(retain_graph=True)
             loss.backward()
             optimizer.step()
 
@@ -144,10 +187,9 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
 
         train(epoch)
         torch.save(model.state_dict(), f'{SAVE_LOCATION}epoch{epoch}.pth') #epoch{epoch}.pth
-        torch.save(disc.state_dict(), f'{SAVE_LOCATION}epoch{epoch}_disc.pth')
+        # torch.save(disc.state_dict(), f'{SAVE_LOCATION}epoch{epoch}_disc.pth')
 
         adjust_learning_rate(optimizer, epoch)
-        adjust_learning_rate(optimizer_disc, epoch)
+        # adjust_learning_rate(optimizer_disc, epoch)
 
 training(max_epoch=MAX_EPOCH, log_interval=100, fixed_length=0, batch_size=BATCH_SIZE, tensor_cut=TENSOR_CUT)
-
