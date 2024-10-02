@@ -156,7 +156,7 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
             # disc.zero_grad()
             print(tim.shape, pro.shape, lengths)
             # torch.Size([5, 643, 512]) torch.Size([5, 643, 1024]) tensor([102, 169, 643, 164, 319], device='cuda:0')
-            diff_loss, _ = model(pro, tim, tar, lengths)
+            output = model(pro, tim, tar, lengths)
 
             # logits_real, fmap_real = disc(input_wav)
             # if train_d:

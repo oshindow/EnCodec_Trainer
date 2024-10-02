@@ -17,7 +17,7 @@ from . import (
     SLSTM
 )
 
-from .diffusion import Diffusion
+from .Unet import Diffusion
 import torch
 def sequence_mask(length, max_length=None):
     if max_length is None:
@@ -163,8 +163,9 @@ class SEANetEncoder(nn.Module):
         target_mask = sequence_mask(lengths, max_length=target.shape[-2]).unsqueeze(1).to(emb)
         # print(target_mask.shape)
         #target = target.transpose(1,2)
-        #target = target.permute(0,2,1).unsqueeze(1)
+        # target = target.permute(0,2,1)
         # print(target.shape)
+        # output = self.diffusion.estimator(target, target_mask, emb)
         diff_loss, xt = self.diffusion.compute_loss(target, target_mask, emb)
         
         return diff_loss, xt
