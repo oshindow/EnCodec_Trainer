@@ -22,8 +22,9 @@ torch.backends.cudnn.deterministic = True
 params.batch_size = 4
 random_seed = params.seed
 params.learning_rate = 1e-4
-params.max_epoch = 20
+params.max_epoch = 1000
 params.log_interval = 1
+SAVE_LOCATION = '/data2/xintong/encodec_models/exp/'
 
 def collate_fn(batch):
     B = len(batch)
@@ -159,7 +160,7 @@ def run(rank, n_gpus):
             model.zero_grad()
             # optimizer_disc.zero_grad()
             # disc.zero_grad()
-            print(tim.shape, pro.shape, lengths)
+            # print(tim.shape, pro.shape, lengths)
             # torch.Size([5, 643, 512]) torch.Size([5, 643, 1024]) tensor([102, 169, 643, 164, 319], device='cuda:0')
             diff_loss, xt = model(pro, tim, tar, lengths)
             diff_loss.backward()
