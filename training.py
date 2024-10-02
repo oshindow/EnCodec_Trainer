@@ -7,12 +7,13 @@ import torch.backends.cudnn as cudnn
 from model import EncodecModel 
 from msstftd import MultiScaleSTFTDiscriminator
 from audio_to_mel import Audio2Mel
+from utils import fix_len_compatibility
 
 EPSILON = 1e-8
-BATCH_SIZE = 5 #5#55
-TENSOR_CUT = 50000 #10000
+BATCH_SIZE = 4 #5#55
+TENSOR_CUT = 1500 #10000
 MAX_EPOCH = 10000 # Just set this to a very big number and manually stop it
-SAVE_FOLDER = f'saves/new7/'
+SAVE_FOLDER = f'/data2/xintong/saves/new7/'
 SAVE_LOCATION = f'{SAVE_FOLDER}batch{BATCH_SIZE}_cut{TENSOR_CUT}_' # appends epoch{epoch}.pth
 
 if not os.path.exists(SAVE_FOLDER):
@@ -61,6 +62,7 @@ def collate_fn(batch):
     # target: [1, 329, 128]
 
     max_length = max([item[1].shape[-2] for item in batch])
+    max_length = fix_len_compatibility(max_length)
     # tar_max_length = max([item[3].shape[-2] for item in batch])
 
     pro_nfeats = batch[0][1].shape[-1]
@@ -88,7 +90,7 @@ def collate_fn(batch):
     lengths = torch.LongTensor(lengths)
     # tar_lengths = torch.LongTensor(tar_lengths)
 
-    print(pro.shape, tim.shape, tar.shape, lengths)
+    # print(pro.shape, tim.shape, tar.shape, lengths)
     return pro, tim, tar, lengths
 
 
@@ -154,7 +156,7 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
             # disc.zero_grad()
             print(tim.shape, pro.shape, lengths)
             # torch.Size([5, 643, 512]) torch.Size([5, 643, 1024]) tensor([102, 169, 643, 164, 319], device='cuda:0')
-            output, loss_enc, _ = model(pro, tim)
+            diff_loss, _ = model(pro, tim, tar, lengths)
 
             # logits_real, fmap_real = disc(input_wav)
             # if train_d:
@@ -166,15 +168,16 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
             #     last_loss = 0
 
             # logits_fake, fmap_fake = disc(output)
-            loss = total_loss(output, tim, tim_lengths)
-            last_loss += loss.item()
+            # loss = total_loss(output, tim, tim_lengths)
+            # last_loss += diff_loss.item()
             # loss_enc.backward(retain_graph=True)
-            loss.backward()
+            diff_loss.backward()
             optimizer.step()
 
             if batch_idx % log_interval == 0:
                 print(torch.cuda.mem_get_info())
-                print(f"Train Epoch: {epoch} [{batch_idx * len(input_wav)}/{len(trainloader.dataset)} ({100. * batch_idx / len(trainloader):.0f}%)]")
+                # print(f"Train Epoch: {epoch} [{batch_idx * len(input_wav)}/{len(trainloader.dataset)} ({100. * batch_idx / len(trainloader):.0f}%)]")
+                print(f"Train Epoch: {epoch} steps: {batch_idx} / {len(trainloader.dataset)} diff loss: {diff_loss}")
 
 
     def adjust_learning_rate(optimizer, epoch):
@@ -192,4 +195,4 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
         adjust_learning_rate(optimizer, epoch)
         # adjust_learning_rate(optimizer_disc, epoch)
 
-training(max_epoch=MAX_EPOCH, log_interval=100, fixed_length=0, batch_size=BATCH_SIZE, tensor_cut=TENSOR_CUT)
+training(max_epoch=MAX_EPOCH, log_interval=1, fixed_length=0, batch_size=BATCH_SIZE, tensor_cut=TENSOR_CUT)
