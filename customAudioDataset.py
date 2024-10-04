@@ -5,6 +5,7 @@ import torchaudio
 import random
 import numpy as np
 import json
+from sklearn.preprocessing import StandardScaler
 
 class CustomAudioDataset(torch.utils.data.Dataset):
     def __init__(self, data_path, transform=None, tensor_cut=0, fixed_length=None):
@@ -22,7 +23,7 @@ class CustomAudioDataset(torch.utils.data.Dataset):
         # self.write_lengths()
         self.lengths = [self.lengths_dict[key[0]] for key in self.data]
             # self.accents = [int(key[3]) for key in self.filelist ]
-    
+        # self.scaler = StandardScaler()
     def write_lengths(self):
         self.lengths = {}
         idx = 0
@@ -63,6 +64,20 @@ class CustomAudioDataset(torch.utils.data.Dataset):
         #     return self.fixed_length
         return len(self.data)
 
+    def norm(self, x):
+        
+        # dim = 0
+
+        # Find the minimum and maximum along the specified axis
+        x_min = x.min(dim=0, keepdim=True)[0]
+        x_max = x.max(dim=0, keepdim=True)[0]
+
+        # Perform min-max normalization to the range [0, 1]
+        x_normalized = (x - x_min) / (x_max - x_min)
+
+        # Scale to the range [-1, 1]
+        return 2 * x_normalized - 1
+
     def __getitem__(self, idx):
         
         uid, prosody_path, timbre_path, target_path = self.data[idx]
@@ -84,17 +99,25 @@ class CustomAudioDataset(torch.utils.data.Dataset):
         # Select the folder based on the random integer
         selected_folder = folders[random_int]
         prosody_path = prosody_path.replace('prosody_vec', selected_folder)
-        prosody = torch.FloatTensor(np.load(prosody_path)).unsqueeze(0)
+        prosody_scaled = self.norm(torch.FloatTensor(np.load(prosody_path)))
+        
+        # print('before', np.load(prosody_path))
+        # print(prosody_scaled)
+        # print(prosody_scaled.min(), prosody_scaled[0][0].max())
+        prosody = prosody_scaled.unsqueeze(0)
         timbre = torch.FloatTensor(np.load(timbre_path))
         target = torch.FloatTensor(np.load(target_path)).transpose(1, 2)[:,:prosody.shape[-2],:]
-
+        
         # print(uid, prosody.shape, timbre.shape, target.shape)
 
         # long audio
         if self.tensor_cut > 0:
             # print(target.size())
             if target.size()[-2] > self.tensor_cut:
+                # print('cut', target.size())
                 start = random.randint(0, target.size()[1]-self.tensor_cut-1)
                 target = target[:, start:start+self.tensor_cut,:]
+                prosody = prosody[:, start:start+self.tensor_cut,:]
+                # self.lengths[idx] = self.tensor_cut
         return uid, prosody, timbre, target
 

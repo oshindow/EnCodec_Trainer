@@ -249,7 +249,7 @@ class GradLogPEstimator2d(BaseModule):
 
         x = self.final_block(x, mask)
         output = self.final_conv(x * mask)
-
+        # print(output.shape) torch.Size([8, 1, 128, 552])
         return (output * mask).squeeze(1)
 
 
@@ -326,6 +326,8 @@ class Diffusion(BaseModule):
         time = t.unsqueeze(-1).unsqueeze(-1)
         cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True)
         noise_estimation = self.estimator(xt, mask, mu, t, spk, acc, gst)
+        # print('noise_est:', noise_estimation.shape)
+        # print('cum_noise:', cum_noise.shape, cum_noise)
         noise_estimation *= torch.sqrt(1.0 - torch.exp(-cum_noise))
         loss = torch.sum((noise_estimation + z)**2) / (torch.sum(mask)*self.n_feats)
         return loss, xt
@@ -338,4 +340,5 @@ class Diffusion(BaseModule):
                        requires_grad=False)
         # print(t)
         t = torch.clamp(t, offset, 1.0 - offset)
+        # print('go to loss_t')
         return self.loss_t(x0, mask, mu, t, spk, acc, gst)

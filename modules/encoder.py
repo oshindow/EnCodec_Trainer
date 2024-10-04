@@ -1,4 +1,4 @@
-from .Unet import Diffusion
+from .diffusion import Diffusion
 import torch
 import torch.nn as nn
 
@@ -16,7 +16,7 @@ class SEANetEncoder(nn.Module):
         self.preconv_timbre = nn.Conv1d(512, 128, kernel_size=3, padding=1)
 
         self.diffusion = Diffusion(n_feats=128, dim=64)
-    
+             
     def forward(self, pro, tim, target, lengths):
         pro_emb = self.preconv_prosody(pro.permute(0, 2, 1))
         tim_emb = self.preconv_timbre(tim.permute(0, 2, 1))
@@ -30,3 +30,16 @@ class SEANetEncoder(nn.Module):
         diff_loss, xt = self.diffusion.compute_loss(target, target_mask, emb)
         
         return diff_loss, xt
+
+    def inference(self, pro, tim, lengths):
+        pro_emb = self.preconv_prosody(pro.permute(0, 2, 1))
+        tim_emb = self.preconv_timbre(tim.permute(0, 2, 1))
+        emb = (pro_emb + tim_emb)
+        # target_mask = sequence_mask(lengths, max_length=target.shape[-2]).unsqueeze(1).to(emb)
+        z = emb + torch.randn_like(emb, device=emb.device) / 1.5
+        target_mask = sequence_mask(lengths, max_length=pro_emb.shape[-1]).unsqueeze(1).to(emb)
+        
+        output = self.diffusion(z, target_mask, emb, n_timesteps=50)
+
+        return output
+        

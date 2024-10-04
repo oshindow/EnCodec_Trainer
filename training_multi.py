@@ -19,10 +19,10 @@ from modules.encoder import SEANetEncoder
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 # torch.backends.cudnn.benchmark = True
-params.batch_size = 4
+params.batch_size = 8
 random_seed = params.seed
 params.learning_rate = 1e-4
-params.max_epoch = 1000
+params.max_epoch = 800
 params.log_interval = 1
 SAVE_LOCATION = '/data2/xintong/encodec_models/exp/'
 
@@ -50,7 +50,13 @@ def collate_fn(batch):
 
     for i, item in enumerate(batch):
         pro_, tim_, tar_ = item[1], item[2], item[3]
-        
+        # if target.size()[-2] > 1000:
+        #     # print('cut', target.size())
+        #     start = random.randint(0, target.size()[1]-self.tensor_cut-1)
+        #     target = target[:, start:start+self.tensor_cut,:]
+        #     # print(target.size())
+        #     self.lengths[idx] = self.tensor_cut
+
         lengths.append(pro_.shape[-2])
         # tar_lengths.append(tar_.shape[-2])
 
@@ -104,7 +110,7 @@ def run(rank, n_gpus):
         # logger,
         train_dataset,
         params.batch_size,
-        [0, 100, 500, 700, 800,900,1000, 1500, 2000,2500],
+        [0, 100, 400, 500, 600,700,800, 900, 1000,2500],
         num_replicas=n_gpus,
         rank=rank,
         shuffle=True)
@@ -169,7 +175,7 @@ def run(rank, n_gpus):
             if batch_idx % params.log_interval == 0:
                 print(torch.cuda.mem_get_info())
                 # print(f"Train Epoch: {epoch} [{batch_idx * len(input_wav)}/{len(trainloader.dataset)} ({100. * batch_idx / len(trainloader):.0f}%)]")
-                print(f"Train Epoch: {epoch} steps: {batch_idx} / {len(trainloader.dataset)} diff loss: {diff_loss}")
+                print(f"Train Epoch: {epoch} steps: {batch_idx} / {len(trainloader.dataset) / params.batch_size} diff loss: {diff_loss}")
 
 
     def adjust_learning_rate(optimizer, epoch):

@@ -31,5 +31,7 @@ for root, dirs, files in os.walk(target_root):
 
 with open('train.txt', 'w', encoding='utf8') as output:
     for key, item in data.items():
-        output.write(key + '|' + item[0] + '|' + item[1] + '|' + item[2] + '\n')
-
+        try:
+            output.write(key + '|' + item[0] + '|' + item[1] + '|' + item[2] + '\n')
+        except:
+            continue
