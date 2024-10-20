@@ -9,8 +9,8 @@ from msstftd import MultiScaleSTFTDiscriminator
 from audio_to_mel import Audio2Mel
 from utils import fix_len_compatibility
 
-EPSILON = 1e-8
-BATCH_SIZE = 4 #5#55
+EPSILON = 1e-4
+BATCH_SIZE = 1 #5#55
 TENSOR_CUT = 1500 #10000
 MAX_EPOCH = 10000 # Just set this to a very big number and manually stop it
 SAVE_FOLDER = f'/data2/xintong/saves/new7/'
@@ -69,6 +69,8 @@ def collate_fn(batch):
     tim_nfeats = 512 # batch[0][2].shape[-1]
     tar_nfeats = batch[0][3].shape[-1]
 
+    uid = [item[0] for item in batch]
+
     # print(type(B), type(pro_max_length), type(pro_nfeats))
     pro = torch.zeros((B, max_length, pro_nfeats), dtype=torch.float32)
     tar = torch.zeros((B, max_length, tar_nfeats), dtype=torch.float32)
@@ -91,10 +93,10 @@ def collate_fn(batch):
     # tar_lengths = torch.LongTensor(tar_lengths)
 
     # print(pro.shape, tim.shape, tar.shape, lengths)
-    return pro, tim, tar, lengths
+    return uid, pro, tim, tar, lengths
 
 
-def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=100000, batch_size=8):
+def training(max_epoch = 5, log_interval = 1, fixed_length = 0, tensor_cut=100000, batch_size=8):
     # csv_path = 'datasets/e-gmd-v1.0.0/fileTRAIN.csv'
     # data_path = 'datasets/e-gmd-v1.0.0'
     # params.data_path 
@@ -139,7 +141,7 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
         print('----------------------------------------Epoch: {}----------------------------------------'.format(epoch))
         for batch_idx, batch in enumerate(trainloader):
 
-            pro, tim, tar, lengths = batch
+            uid, pro, tim, tar, lengths = batch
             # torch.Size([5, 754, 1024]) torch.Size([5]) torch.Size([5, 512]) torch.Size([5, 754, 128]) torch.Size([5]
             # torch.Size([5, 1376, 1024]) tensor([ 259,   98, 1376,  598, 1250]) torch.Size([5, 512]) torch.Size([5, 1376, 128]) tensor([ 259,   98, 1376,  598, 1250])
             pro = pro.cuda()
@@ -149,9 +151,7 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
             tar = tar.cuda()
             # tar_lengths = tar_lengths.cuda()
 
-
             optimizer.zero_grad()
-            model.zero_grad()
             # optimizer_disc.zero_grad()
             # disc.zero_grad()
             print(tim.shape, pro.shape, lengths)
@@ -175,6 +175,7 @@ def training(max_epoch = 5, log_interval = 20, fixed_length = 0, tensor_cut=1000
             optimizer.step()
 
             if batch_idx % log_interval == 0:
+                print("uid: ", uid)
                 print(torch.cuda.mem_get_info())
                 # print(f"Train Epoch: {epoch} [{batch_idx * len(input_wav)}/{len(trainloader.dataset)} ({100. * batch_idx / len(trainloader):.0f}%)]")
                 print(f"Train Epoch: {epoch} steps: {batch_idx} / {len(trainloader.dataset)} diff loss: {diff_loss}")

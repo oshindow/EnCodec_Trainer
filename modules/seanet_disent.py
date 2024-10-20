@@ -150,21 +150,22 @@ class SEANetEncoder(nn.Module):
         ]
 
         self.model = nn.Sequential(*model)
+
         # Encoder prenet
         self.preconv_prosody = nn.Conv1d(1024, 128, kernel_size=3, padding=1)
         self.preconv_timbre = nn.Conv1d(512, 128, kernel_size=3, padding=1)
+        self.layer_norm = nn.LayerNorm(normalized_shape=128)
+        self.relu = nn.ReLU()
 
         self.diffusion = Diffusion(128, 128)
     
     def forward(self, pro, tim, target, lengths):
         pro_emb = self.preconv_prosody(pro.permute(0, 2, 1))
+        pro_emb = self.relu(self.layer_norm(pro_emb.permute(0, 2, 1))).permute(0, 2, 1)
         tim_emb = self.preconv_timbre(tim.permute(0, 2, 1))
-        emb = (pro_emb + tim_emb)
+        tim_emb = self.relu(self.layer_norm(tim_emb.permute(0, 2, 1))).permute(0, 2, 1)
+        emb = pro_emb + tim_emb
         target_mask = sequence_mask(lengths, max_length=target.shape[-2]).unsqueeze(1).to(emb)
-        # print(target_mask.shape)
-        #target = target.transpose(1,2)
-        #target = target.permute(0,2,1).unsqueeze(1)
-        # print(target.shape)
         diff_loss, xt = self.diffusion.compute_loss(target, target_mask, emb)
         
         return diff_loss, xt

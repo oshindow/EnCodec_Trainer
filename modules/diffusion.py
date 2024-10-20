@@ -322,7 +322,6 @@ class Diffusion(BaseModule):
 
     def loss_t(self, x0, mask, mu, t, spk=None, acc=None, gst=None):
         xt, z = self.forward_diffusion(x0, mask, mu, t)
-        # print(xt.shape)
         time = t.unsqueeze(-1).unsqueeze(-1)
         cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True)
         noise_estimation = self.estimator(xt, mask, mu, t, spk, acc, gst)
