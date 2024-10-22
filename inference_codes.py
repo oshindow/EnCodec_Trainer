@@ -125,11 +125,28 @@ def main(params):
 
             optimizer.zero_grad()
             with torch.no_grad():
-                pred = model(pro, tim, con, tar[:,:-1], lengths)
-            probabilities = torch.softmax(pred, dim=-1)
-            predicted_class = torch.argmax(probabilities, dim=-1)
-            print(predicted_class.max(), predicted_class.min())
-            np.save(uid + '.npy', predicted_class.cpu().numpy())
+                # pred = model(pro, tim, con, tar[:,:-1], lengths)
+                max_length = pro.shape[1]
+                tar = torch.LongTensor([1024]).unsqueeze(0).to(device)
+                # lengths = [1]
+                src_length = [max_length]
+                for i in range(max_length):
+                    tgt_length = [tar.shape[-1]]
+                    
+                    logits = model.inference(pro, tim, con, tar, src_length, tgt_length)  # Shape: (batch_size, seq_length, vocab_size)
+                    
+                    next_token_logits = logits[:, -1, :]  # Shape: (batch_size, length, vocab_size)
+                    
+                    next_token_probs = F.softmax(next_token_logits, dim=-1)  # Shape: (batch_size, vocab_size)
+                
+                    next_token = torch.argmax(next_token_probs, dim=-1)  # Shape: (batch_size)
+                    next_token = next_token.unsqueeze(1)  # Shape: (batch_size, 1)
+                    tar = torch.cat([tar, next_token], dim=1)
+    
+            # probabilities = torch.softmax(pred, dim=-1)
+            # predicted_class = torch.argmax(probabilities, dim=-1)
+            # print(predicted_class.max(), predicted_class.min())
+            np.save(uid + '.mask.npy', tar.cpu().numpy())
             loss = criterion(pred.view(-1, params.vocab_size), tar[:,1:].reshape(-1))
 
             loss.backward()
@@ -160,6 +177,8 @@ def main(params):
         print('-' * 89)
 
         scheduler.step()
+
+    # def inference():
         
 
 if __name__ == "__main__":

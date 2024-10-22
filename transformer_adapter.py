@@ -103,7 +103,24 @@ class ARTransformer(nn.Module):
         output = self.transformer(src_emb, tgt_emb, tgt_mask=tgt_mask, src_key_padding_mask=src_key_padding_mask, tgt_key_padding_mask=tgt_key_padding_mask)
 
         return self.fc_out(output)
+    
+    def inference(self, pro, tim, con, tgt, src_seq_len_list, tgt_seq_len_list):
+        pro_emb = self.preconv_prosody(pro.permute(0, 2, 1).contiguous())
+        tim_emb = self.preconv_timbre(tim.permute(0, 2, 1).contiguous())
+        con_emb = self.preconv_content(con.permute(0, 2, 1).contiguous())
+        src = pro_emb + tim_emb + con_emb
 
+        src_emb = self.input_projection(src) + self.pos_encoder(torch.arange(src.size(1)).to(src.device))
+        # print(tgt.max(), tgt.min())
+        tgt_emb = self.embedding(tgt) + self.pos_encoder(torch.arange(tgt.size(1)).to(tgt.device))
+
+        src_key_padding_mask = generate_padding_mask(src_seq_len_list, src_emb.shape[1]).to(src.device)
+        tgt_key_padding_mask = generate_padding_mask(tgt_seq_len_list, tgt_emb.shape[1]).to(tgt.device)
+        tgt_mask = generate_tgt_mask(tgt_emb.shape[1]).to(tgt.device)
+        
+        output = self.transformer(src_emb, tgt_emb, tgt_mask=tgt_mask, src_key_padding_mask=src_key_padding_mask, tgt_key_padding_mask=tgt_key_padding_mask)
+
+        return self.fc_out(output)
 # net_model = ARTransformer(vocab_size=1024, 
 #                 input_dim=512,
 #                 d_model=256, 
