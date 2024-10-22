@@ -103,7 +103,7 @@ class CustomAudioDataset(torch.utils.data.Dataset):
         content = F.interpolate(content.transpose(1,2), size=new_length, mode='linear', align_corners=True).transpose(1,2)
         
         if self.tensor_cut:
-            if target.size()[-2] > self.tensor_cut:
+            if target.size()[-1] > self.tensor_cut:
                 start = random.randint(0, target.size()[1]-self.tensor_cut-1)
                 target = target[:, start:start+self.tensor_cut]
                 prosody = prosody[:, start:start+self.tensor_cut,:]

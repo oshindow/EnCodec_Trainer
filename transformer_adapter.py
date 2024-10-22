@@ -93,7 +93,7 @@ class ARTransformer(nn.Module):
         src = pro_emb + tim_emb + con_emb
 
         src_emb = self.input_projection(src) + self.pos_encoder(torch.arange(src.size(1)).to(src.device))
-
+        # print(tgt.max(), tgt.min())
         tgt_emb = self.embedding(tgt) + self.pos_encoder(torch.arange(tgt.size(1)).to(tgt.device))
 
         src_key_padding_mask = generate_padding_mask(seq_len_list, src_emb.shape[1]).to(src.device)
