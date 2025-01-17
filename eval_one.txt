@@ -1,0 +1,1 @@
+1624_142933_000002_000000_2817timbre|/data2/junchuan/VALLE-X/prosody_vec/1624_142933_000002_000000.npy|/data2/junchuan/VALLE-X/timbre_vec/2817_142380_000002_000000.npy|/data2/xintong/LibriTTS_hubert/train-clean-100/1624/142933/1624_142933_000002_000000.npy|/data2/xintong/LibriTTS_encodec_codes/train-clean-100/1624/142933/1624_142933_000002_000000.npy

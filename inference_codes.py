@@ -7,7 +7,7 @@ import customAudioDataset as data
 import torch.nn.functional as F
 from transformer_adapter import ARTransformer
 import time
-
+import math
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 
@@ -38,7 +38,7 @@ def collate_fn(batch):
     tim = torch.zeros((B, max_length, tim_nfeats), dtype=torch.float32)
     con = torch.zeros((B, max_length, con_nfeats), dtype=torch.float32)
     lengths = []
-
+    
     for i, item in enumerate(batch):
         pro_, tim_, con_, tar_ = item[1], item[2], item[3], item[4]
         lengths.append(pro_.shape[-2])
@@ -64,7 +64,7 @@ def main(params):
 
     print('Initializing data loaders...')
 
-    train_dataset = data.CustomAudioDataset('train.txt', tensor_cut=800)
+    train_dataset = data.CustomAudioDataset('/home/xintong/EnCodec_Trainer/eval_one.txt', tensor_cut=None, training=False)
     trainloader = DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True, collate_fn=collate_fn)
 
     model = ARTransformer(
@@ -95,12 +95,12 @@ def main(params):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=params.learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
 
-    def train(epoch, loader):
-        print(f'----------------------------------------Epoch: {epoch}----------------------------------------')
+    def infer(loader):
+        # print(f'----------------------------------------Epoch: {epoch}----------------------------------------')
         epoch_loss = 0.
         batchn = 0.
         total_loss = 0.
-        model.train()
+        model.eval()
 
         for batch_idx, batch in enumerate(loader):
 
@@ -126,59 +126,140 @@ def main(params):
             optimizer.zero_grad()
             with torch.no_grad():
                 # pred = model(pro, tim, con, tar[:,:-1], lengths)
-                max_length = pro.shape[1]
-                tar = torch.LongTensor([1024]).unsqueeze(0).to(device)
-                # lengths = [1]
-                src_length = [max_length]
-                for i in range(max_length):
-                    tgt_length = [tar.shape[-1]]
-                    
-                    logits = model.inference(pro, tim, con, tar, src_length, tgt_length)  # Shape: (batch_size, seq_length, vocab_size)
-                    
-                    next_token_logits = logits[:, -1, :]  # Shape: (batch_size, length, vocab_size)
-                    
-                    next_token_probs = F.softmax(next_token_logits, dim=-1)  # Shape: (batch_size, vocab_size)
-                
-                    next_token = torch.argmax(next_token_probs, dim=-1)  # Shape: (batch_size)
-                    next_token = next_token.unsqueeze(1)  # Shape: (batch_size, 1)
-                    tar = torch.cat([tar, next_token], dim=1)
+                # tar_one = onetime(pro, tim, con, tar, lengths)
+                # tar_greedy = greedysearch(pro, tim, con, device)
+                # tar_beam = beamsearch(pro, tim, con, device)
+                tar_dbs = diverse_beamsearch(pro, tim, con, device)
     
             # probabilities = torch.softmax(pred, dim=-1)
             # predicted_class = torch.argmax(probabilities, dim=-1)
             # print(predicted_class.max(), predicted_class.min())
-            np.save(uid + '.mask.npy', tar.cpu().numpy())
-            loss = criterion(pred.view(-1, params.vocab_size), tar[:,1:].reshape(-1))
+            # np.save('/home/xintong/EnCodec_Trainer/output/codes/' + uid + '_one.npy', tar_one.cpu().numpy())
+            # np.save('/home/xintong/EnCodec_Trainer/output/codes/' + uid + '_greedy.npy', tar_greedy.cpu().numpy())
+            # np.save('/home/xintong/EnCodec_Trainer/output/codes/' + uid + '_beam.npy', tar_beam.cpu().numpy())
+            np.save('/home/xintong/EnCodec_Trainer/output/codes/' + uid + '_dbs.npy', tar_dbs.cpu().numpy())
+            
+        # return total_loss / batchn
+    def onetime(pro, tim, con, tar, lengths):
+        pred = model(pro, tim, con, tar[:,:-1], lengths)
+        probabilities = torch.softmax(pred, dim=-1)
+        predicted_class = torch.argmax(probabilities, dim=-1)
+        return predicted_class
+    
+    def greedysearch(pro, tim, con, device):
+        max_length = pro.shape[1]
+        tar = torch.LongTensor([1024]).unsqueeze(0).to(device)
+        src_length = [max_length]
+        for i in range(max_length):
+            tgt_length = [tar.shape[-1]]
+            
+            logits = model.inference(pro, tim, con, tar, src_length, tgt_length)  # Shape: (batch_size, seq_length, vocab_size)
+            
+            next_token_logits = logits[:, -1, :]  # Shape: (batch_size, length, vocab_size)
+            
+            next_token_probs = F.softmax(next_token_logits, dim=-1)  # Shape: (batch_size, vocab_size)
+        
+            next_token = torch.argmax(next_token_probs, dim=-1)  # Shape: (batch_size)
+            next_token = next_token.unsqueeze(1)  # Shape: (batch_size, 1)
+            tar = torch.cat([tar, next_token], dim=1)
+        return tar
+    
+    def beamsearch(pro, tim, con, device):
+        beam_width = 5  # Number of sequences to maintain in the beam
+        max_length = pro.shape[1]
+        tar_start = torch.LongTensor([1024]).unsqueeze(0).to(device)
+        src_length = [max_length]
+        
+        # Initialize the beam with the starting token
+        beam = [(tar_start, 0)]  # Each entry is (sequence tensor, cumulative log probability)
+        
+        for i in range(max_length):
+            candidates = []
+            
+            for seq, score in beam:
+                tgt_length = [seq.shape[-1]]
+                logits = model.inference(pro, tim, con, seq, src_length, tgt_length)
+                next_token_logits = logits[:, -1, :]
+                next_token_probs = F.softmax(next_token_logits, dim=-1)
 
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            optimizer.step()
+                # sorted_next_token_probs = torch.sort(next_token_probs, descending=True).values.tolist()
+                # Get top-k tokens and their probabilities
+                top_k_probs, top_k_indices = next_token_probs.topk(beam_width, dim=-1)
+                
+                for j in range(beam_width):
+                    next_token = top_k_indices[:, j].unsqueeze(1)
+                    new_seq = torch.cat([seq, next_token], dim=1)
+                    new_score = score * top_k_probs[0, j].item()
+                    candidates.append((new_seq, new_score))
+            
+            # Select top-k candidates with the highest cumulative probabilities
+            beam = sorted(candidates, key=lambda x: x[1], reverse=True)[:beam_width]
+        
+        # Final sequence with the highest score
+        best_sequence = beam[0][0]
+        return best_sequence
+    
+    def diverse_beamsearch(pro, tim, con, device):
+        beam_width = 5  # Number of sequences to maintain in the beam
+        max_length = pro.shape[1]
+        base_penalty = 0.05  # Adjust the base penalty strength for each consecutive repetition
+        
+        tar_start = torch.LongTensor([1024]).unsqueeze(0).to(device)
+        src_length = [max_length]
+        
+        # Initialize the beam with the starting token
+        beam = [(tar_start, 0)]  # Each entry is (sequence tensor, cumulative log probability)
+        
+        count_consecutive = [0,0,0,0,0]
+        for i in range(max_length):
+            candidates = []
+            
+            # count_consecutive = 0
+            # beam:  
+            # [ [1024,789,], 
+            #       predict 789, 780, consecutive = 1,
+            #   [1024,789, 789], predict 789, consecutive = 2
+            # 
+            #   [1024,780,]
+            # ]
+            for idx, (seq, score) in enumerate(beam): 
+                # beam: [(seq0, score0), (1,2,3,4)]
+                tgt_length = [seq.shape[-1]]
+                logits = model.inference(pro, tim, con, seq, src_length, tgt_length)
+                next_token_logits = logits[:, -1, :]
+                next_token_probs = F.log_softmax(next_token_logits, dim=-1)
+                
+                # Get top-k tokens and their probabilities
+                top_k_probs, top_k_indices = next_token_probs.topk(beam_width, dim=-1)
+                
+                prev_token = seq[0][-1]
+                if prev_token.item() in top_k_indices[0].tolist():
+                    count_consecutive[idx] += 1
+                else:
+                    count_consecutive[idx] = 0
 
-            total_loss += loss.item()
-            epoch_loss += loss.item()
+                if count_consecutive[idx] > 0:
+                    penalty = math.log(base_penalty) ** count_consecutive[idx]  # Higher count means stronger penalty
+                    next_token_probs[0][prev_token.item()] += penalty
+                
+                # second pass
+                top_k_probs, top_k_indices = next_token_probs.topk(beam_width, dim=-1)
 
-            log_interval = params.log_interval
+                ## 
+                for j in range(beam_width):
+                    next_token = top_k_indices[:, j].unsqueeze(1)
+                    new_seq = torch.cat([seq, next_token], dim=1)
+                    new_score = score + top_k_probs[0, j].item()
+                    candidates.append((new_seq, new_score))
 
-            if batch_idx % log_interval == 0 and batch_idx > 0:
-                cur_loss = total_loss / log_interval
+            # Select top-k candidates with the highest cumulative probabilities
+            beam = sorted(candidates, key=lambda x: x[1], reverse=True)[:beam_width]
+        
+        # Final sequence with the highest score
+        best_sequence = beam[0][0]
+        return best_sequence
 
-                print(f"Train Epoch: {epoch} steps: {batch_idx} / {int(len(trainloader.dataset) / params.batch_size)} loss: {cur_loss}")
-
-                total_loss = 0
-
-        return total_loss / batchn
-
-    for epoch in range(1, params.max_epoch + 1):
-        epoch_start_time = time.time()
-        epoch_loss = train(epoch, trainloader)
-        torch.save(model.state_dict(), f'{SAVE_LOCATION}epoch{epoch}.pth')
-
-        print('-' * 89)
-        print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f}'.format(epoch, (time.time() - epoch_start_time), epoch_loss))
-        print('-' * 89)
-
-        scheduler.step()
-
-    # def inference():
+    infer(trainloader)      
         
 
 if __name__ == "__main__":

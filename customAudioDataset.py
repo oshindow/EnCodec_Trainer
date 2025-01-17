@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 import torch.nn.functional as F
 
 class CustomAudioDataset(torch.utils.data.Dataset):
-    def __init__(self, data_path, transform=None, tensor_cut=0, fixed_length=None):
+    def __init__(self, data_path, transform=None, tensor_cut=0, fixed_length=None, training=True):
         self.data_path = data_path
         
         self.data = []
@@ -20,9 +20,10 @@ class CustomAudioDataset(torch.utils.data.Dataset):
         self.tensor_cut = tensor_cut
         # if train:
         self.lengths_dict = self.get_lengths()
+        self.training = training
         # oooooooooooooooooooooo
         # self.write_lengths()
-        self.lengths = [self.lengths_dict[key[0]] for key in self.data]
+        # self.lengths = [self.lengths_dict[key[0]] for key in self.data]
             # self.accents = [int(key[3]) for key in self.filelist ]
         # self.scaler = StandardScaler()
     def write_lengths(self):
@@ -41,13 +42,13 @@ class CustomAudioDataset(torch.utils.data.Dataset):
             idx += 1
 
         print(self.lengths_max)
-        with open('lengths.json', 'w', encoding='utf8') as output:
+        with open('/home/xintong/EnCodec_Trainer/lengths.json', 'w', encoding='utf8') as output:
             json.dump(self.lengths, output, indent=4)
             
         return self.lengths
     
     def get_lengths(self):
-        with open('lengths.json', 'r', encoding='utf8') as input:
+        with open('/home/xintong/EnCodec_Trainer/lengths.json', 'r', encoding='utf8') as input:
             self.lengths_dict = json.load(input)
         self.lengths_max = 2494
         return self.lengths_dict
@@ -77,21 +78,23 @@ class CustomAudioDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         
         uid, prosody_path, timbre_path, content_path, target_path = self.data[idx]
+        if self.training:
+            import random
+
+            folders = {
+                0: 'prosody_vec',
+                1: 'prosody_vec_200n',
+                2: 'prosody_vec_400n',
+                3: 'prosody_vec_200p',
+                4: 'prosody_vec_400p'
+            }
+
+            random_int = random.randint(0, 4)
+       
+            selected_folder = folders[random_int]
         
-        import random
-
-        folders = {
-            0: 'prosody_vec',
-            1: 'prosody_vec_200n',
-            2: 'prosody_vec_400n',
-            3: 'prosody_vec_200p',
-            4: 'prosody_vec_400p'
-        }
-
-        random_int = random.randint(0, 4)
-
-        selected_folder = folders[random_int]
-        prosody_path = prosody_path.replace('prosody_vec', selected_folder)
+            prosody_path = prosody_path.replace('prosody_vec', selected_folder)
+        
         prosody_scaled = self.norm(torch.FloatTensor(np.load(prosody_path)), dim=0)[0]
         
         prosody = prosody_scaled.unsqueeze(0)
