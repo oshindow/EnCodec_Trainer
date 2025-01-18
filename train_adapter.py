@@ -11,7 +11,7 @@ import time
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 
-params.batch_size = 4
+params.batch_size = 2
 random_seed = params.seed
 params.learning_rate = 1e-4
 params.max_epoch = 800
@@ -20,6 +20,7 @@ SAVE_LOCATION = '/data2/xintong/encodec_models/exp_E2/'
 
 import warnings
 warnings.filterwarnings("ignore")
+
 
 def collate_fn(batch):
     B = len(batch)
@@ -81,8 +82,14 @@ def main(params):
     model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss(ignore_index=params.pad_idx)
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=params.learning_rate)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=params.learning_rate,
+        betas=(0.9, 0.98),
+        eps=1e-9
+    )
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
+
 
     def train(epoch, loader):
         print(f'----------------------------------------Epoch: {epoch}----------------------------------------')
@@ -104,7 +111,7 @@ def main(params):
                 
                 continue
 
-            if (tar < 0).any() or (tar > 1025).any():
+            if (tar < 0).any() or (tar > 1026).any():
                 print(batch_idx)
                 raise ValueError(f"tgt tensor contains values out of bounds: {tar[tar < 0]} and {tar[tar > 1025]}")
 
@@ -114,6 +121,7 @@ def main(params):
 
             optimizer.zero_grad()
             pred = model(pro, tim, con, tar[:,:-1], lengths)
+
             loss = criterion(pred.view(-1, params.vocab_size), tar[:,1:].reshape(-1))
 
             loss.backward()

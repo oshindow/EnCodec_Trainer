@@ -4,7 +4,7 @@ import customAudioDataset as data
 import os
 import torch.backends.cudnn as cudnn
 
-from model import EncodecModel 
+from model import transformer_adapter 
 from msstftd import MultiScaleSTFTDiscriminator
 from audio_to_mel import Audio2Mel
 from utils import fix_len_compatibility
@@ -157,6 +157,10 @@ def training(max_epoch = 5, log_interval = 1, fixed_length = 0, tensor_cut=10000
             print(tim.shape, pro.shape, lengths)
             # torch.Size([5, 643, 512]) torch.Size([5, 643, 1024]) tensor([102, 169, 643, 164, 319], device='cuda:0')
             diff_loss, _ = model(pro, tim, tar, lengths)
+
+            import pdb
+
+            pdb.set_trace()
 
             # logits_real, fmap_real = disc(input_wav)
             # if train_d:
