@@ -11,7 +11,7 @@ import time
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 
-params.batch_size = 4
+params.batch_size = 2
 random_seed = params.seed
 params.learning_rate = 1e-4
 params.max_epoch = 800
