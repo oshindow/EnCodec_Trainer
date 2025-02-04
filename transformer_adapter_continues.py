@@ -81,8 +81,13 @@ class ARTransformer(pl.LightningModule):
             Mish(),
             nn.Linear(512, 1024))
         
-        self.content_emb = nn.Embedding(1024 + 1, d_model, padding_idx=1024)
-        # self.input_projection = nn.Linear(input_dim, d_model)
+        self.preconv_content = torch.nn.Sequential(
+            nn.Conv1d(1024, input_dim, kernel_size=3, padding=1),
+            Transpose(1,2),
+            nn.LayerNorm(input_dim),
+            Mish())
+        
+        self.input_projection = nn.Linear(input_dim, d_model)
         self.embedding = nn.Embedding(vocab_size + 3, d_model, padding_idx=pad_idx)
         self.pe = PositionalEncoding(d_model)
         
@@ -125,20 +130,21 @@ class ARTransformer(pl.LightningModule):
     def forward(self, tim, con, tgt, src_len_list, seq_len_list):
         # pro_emb = self.preconv_prosody(pro.permute(0, 2, 1).contiguous())
         tim_emb = self.preconv_timbre(tim.permute(0, 2, 1).contiguous())
-        con_emb = self.content_emb(con)
-        # print(con_emb.shape, tim_emb.shape)
-        src_emb = self.pe(con_emb)
+        con_emb = self.preconv_content(con.permute(0, 2, 1).contiguous())
+        src = con_emb
+
+        src_emb = self.input_projection(src)
+        src_emb = self.pe(src_emb)
 
         tgt_emb = self.embedding(tgt)
         tgt_emb = self.pe(tgt_emb)
 
-        src_key_padding_mask = generate_padding_mask(src_len_list, src_emb.shape[1]).to(tgt.device)
+        src_key_padding_mask = generate_padding_mask(src_len_list, src_emb.shape[1]).to(src.device)
         tgt_key_padding_mask = generate_padding_mask(seq_len_list, tgt_emb.shape[1]).to(tgt.device)
         tgt_mask = generate_tgt_mask(tgt_emb.shape[1]).to(tgt.device)
         memory_mask = src_key_padding_mask.any(dim=0).unsqueeze(1).expand(-1, max(seq_len_list)).transpose(0, 1)
         # print(src_key_padding_mask.shape, tgt_key_padding_mask.shape, memory_mask.shape)
         # torch.Size([4, 337]) torch.Size([4, 508]) torch.Size([508, 508])
-        
         memory = self.encoder(src_emb, src_key_padding_mask=src_key_padding_mask.permute(1, 0))
 
         memory = memory + tim_emb
@@ -220,7 +226,7 @@ class ARTransformer(pl.LightningModule):
     
     def train_dataloader(self):
         """訓練データローダーを作成する"""
-        train_dataset = CodecTokenDataset(self.train_path, kmeans=True)
+        train_dataset = CodecTokenDataset(self.train_path)
         print(train_dataset.__len__)
         # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1, collate_fn=WhisperDataCollatorWhithPadding())
 
@@ -232,7 +238,7 @@ class ARTransformer(pl.LightningModule):
 
     def val_dataloader(self):
         """バリデーションデータローダーを作成する"""
-        dataset = CodecTokenDataset(self.val_path, tensor_cut=0, kmeans=True)
+        dataset = CodecTokenDataset(self.val_path, tensor_cut=0)
         return torch.utils.data.DataLoader(dataset, 
                           batch_size=self.cfg.batch_size, 
                           num_workers=self.cfg.num_worker,

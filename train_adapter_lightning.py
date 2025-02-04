@@ -16,7 +16,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
 if __name__ == '__main__':
     
     train_name = "lightning"
-    train_id = "00001"
+    train_id = "00007"
 
     log_output_dir = "exp" 
     check_output_dir = "exp" 
@@ -61,7 +61,7 @@ if __name__ == '__main__':
         accumulate_grad_batches=cfg.gradient_accumulation_steps,
         logger=tflogger,
         callbacks=callback_list,
-        val_check_interval=0.2
+        val_check_interval=0.3
     )
 
     trainer.fit(model)
